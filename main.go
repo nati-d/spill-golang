@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"github.com/nati-d/spill-backend/features/auth"
 	"github.com/nati-d/spill-backend/features/nickname"
 	"github.com/nati-d/spill-backend/middleware"
 )
@@ -23,6 +24,9 @@ func main() {
 
 	// Initialize Supabase client
 	InitSupabase() // This will panic if initialization fails
+
+	// Initialize auth service with Supabase
+	auth.InitAuthService(Supabase())
 
 	// Initialize nickname service with Supabase
 	if err := nickname.InitSupabase(Supabase()); err != nil {
@@ -41,15 +45,22 @@ func main() {
 	})
 
 	// Public routes (no authentication required)
+	router.GET("/", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"message": "Spill Backend API", "status": "running"})
+	})
+
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
+
+	router.POST("/auth/telegram", auth.TelegramLogin)
 
 	// Private routes (authentication required)
 	authGroup := router.Group("/")
 	authGroup.Use(middleware.AuthRequired())
 	{
 		nickname.RegisterRoutes(authGroup)
+		auth.RegisterProfileRoutes(authGroup)
 	}
 
 	port := os.Getenv("PORT")
