@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -10,19 +11,28 @@ import (
 func TelegramLogin(c *gin.Context) {
 	initData := c.PostForm("init_data")
 	if initData == "" {
+		// Also check header
+		initData = c.GetHeader("X-Telegram-Init-Data")
+	}
+	if initData == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "missing init_data"})
 		return
 	}
 
 	tgUser, err := telegram.ValidateInitData(initData)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid"})
+		log.Printf("Telegram validation error: %v", err)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid telegram data"})
 		return
 	}
 
 	profile, suggestions, err := AuthService.LoginOrRegister(c.Request.Context(), tgUser)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		log.Printf("LoginOrRegister error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "Failed to process login",
+			"details": err.Error(),
+		})
 		return
 	}
 
