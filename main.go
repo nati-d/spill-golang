@@ -13,9 +13,13 @@ import (
 )
 
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Println("Error loading .env file")
+	// Load environment variables when on dev mode only
+	devMode := os.Getenv("DEV_MODE") == "true"
+	if devMode {
+		err := godotenv.Load()
+		if err != nil {
+			log.Println("Error loading .env file")
+		}
 	}
 
 	// Initialize Supabase client
