@@ -10,29 +10,25 @@ import (
 	"strings"
 	"time"
 
-	"github.com/redis/go-redis/v9"
+	supabase "github.com/supabase-community/supabase-go"
 )
 
 var (
-	adjectives  []string
-	colors      []string
-	nouns       []string
-	rdb         *redis.Client
-	ctx         = context.Background()
-	initialized bool
+	adjectives     []string
+	colors         []string
+	nouns          []string
+	supabaseClient *supabase.Client
+	ctx            = context.Background()
+	initialized    bool
 )
 
-func InitRedis(client *redis.Client) error {
+// InitSupabase initializes the nickname service with Supabase client
+func InitSupabase(client *supabase.Client) error {
 	if client == nil {
-		return errors.New("redis client cannot be nil")
+		return errors.New("supabase client cannot be nil")
 	}
 
-	rdb = client
-
-	// Test Redis connection
-	if err := rdb.Ping(ctx).Err(); err != nil {
-		return fmt.Errorf("failed to connect to Redis: %w", err)
-	}
+	supabaseClient = client
 
 	// Load word lists
 	if err := loadWords(); err != nil {
@@ -40,7 +36,7 @@ func InitRedis(client *redis.Client) error {
 	}
 
 	initialized = true
-	log.Println("Nickname service initialized successfully")
+	log.Println("Nickname service initialized successfully with Supabase")
 	return nil
 }
 
@@ -94,8 +90,8 @@ func GenerateThree() ([]string, error) {
 		return nil, errors.New("nickname service not initialized")
 	}
 
-	if rdb == nil {
-		return nil, errors.New("redis client not initialized")
+	if supabaseClient == nil {
+		return nil, errors.New("supabase client not initialized")
 	}
 
 	suggestions := []string{}
@@ -131,10 +127,10 @@ func GenerateThree() ([]string, error) {
 		}
 
 		if !seen[nick] {
-			taken, err := rdb.SIsMember(ctx, "used_nicknames", nick).Result()
+			taken, err := isNicknameTaken(nick)
 			if err != nil {
-				// If Redis is down, log but continue (graceful degradation)
-				log.Printf("Redis error checking nickname: %v", err)
+				// If Supabase is down, log but continue (graceful degradation)
+				log.Printf("Supabase error checking nickname: %v", err)
 				// Assume not taken if we can't check
 				taken = false
 			}
@@ -161,14 +157,48 @@ func randomItem(slice []string, rng *rand.Rand) string {
 }
 
 func Reserve(nick string) bool {
-	if rdb == nil {
+	if supabaseClient == nil {
 		return false
 	}
 
-	added, err := rdb.SAdd(ctx, "used_nicknames", nick).Result()
+	// Check if nickname already exists
+	taken, err := isNicknameTaken(nick)
 	if err != nil {
-		log.Printf("Redis error reserving nickname: %v", err)
+		log.Printf("Supabase error checking nickname: %v", err)
 		return false
 	}
-	return added == 1
+	if taken {
+		return false
+	}
+
+	// Insert new nickname
+	var result []map[string]interface{}
+	_, err = supabaseClient.From("used_nicknames").
+		Insert(map[string]interface{}{
+			"nickname":   nick,
+			"created_at": time.Now().Format(time.RFC3339),
+		}, false, "", "", "").
+		ExecuteTo(&result)
+
+	if err != nil {
+		log.Printf("Supabase error reserving nickname: %v", err)
+		return false
+	}
+
+	return true
+}
+
+// isNicknameTaken checks if a nickname is already taken in Supabase
+func isNicknameTaken(nick string) (bool, error) {
+	var result []map[string]interface{}
+	_, err := supabaseClient.From("used_nicknames").
+		Select("nickname", "", false).
+		Eq("nickname", nick).
+		ExecuteTo(&result)
+
+	if err != nil {
+		return false, err
+	}
+
+	return len(result) > 0, nil
 }

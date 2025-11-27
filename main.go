@@ -9,7 +9,6 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/nati-d/spill-backend/features/nickname"
 	"github.com/nati-d/spill-backend/middleware"
-	"github.com/redis/go-redis/v9"
 )
 
 func main() {
@@ -25,19 +24,8 @@ func main() {
 	// Initialize Supabase client
 	InitSupabase() // This will panic if initialization fails
 
-	// Initialize Redis client
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		redisAddr = "localhost:6379"
-	}
-	redisClient := redis.NewClient(&redis.Options{
-		Addr:     redisAddr,
-		Password: os.Getenv("REDIS_PASSWORD"), // Empty string if not set
-		DB:       0,                           // Default DB
-	})
-
-	// Initialize nickname service
-	if err := nickname.InitRedis(redisClient); err != nil {
+	// Initialize nickname service with Supabase
+	if err := nickname.InitSupabase(Supabase()); err != nil {
 		log.Fatalf("Failed to initialize nickname service: %v", err)
 	}
 
