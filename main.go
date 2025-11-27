@@ -7,7 +7,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"github.com/nati-d/spill-backend/features/nickname"
 	"github.com/nati-d/spill-backend/middleware"
+	"github.com/redis/go-redis/v9"
 )
 
 func main() {
@@ -18,6 +20,22 @@ func main() {
 
 	// Initialize Supabase client
 	InitSupabase() // This will panic if initialization fails
+
+	// Initialize Redis client
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "localhost:6379"
+	}
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:     redisAddr,
+		Password: os.Getenv("REDIS_PASSWORD"), // Empty string if not set
+		DB:       0,                           // Default DB
+	})
+
+	// Initialize nickname service
+	if err := nickname.InitRedis(redisClient); err != nil {
+		log.Fatalf("Failed to initialize nickname service: %v", err)
+	}
 
 	router := gin.Default()
 	router.Use(func(c *gin.Context) {
@@ -39,12 +57,7 @@ func main() {
 	authGroup := router.Group("/")
 	authGroup.Use(middleware.AuthRequired())
 	{
-		// TODO: Add your route handlers here
-		// Example:
-		// authGroup.GET("/api/user", getUserHandler)
-		// nickname.RegisterRoutes(authGroup)
-		// auth.RegisterRoutes(authGroup)
-		// confession.RegisterRoutes(authGroup)
+		nickname.RegisterRoutes(authGroup)
 	}
 
 	port := os.Getenv("PORT")
